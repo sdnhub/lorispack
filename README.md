@@ -16,7 +16,10 @@ on different hosts to communicate with each other.
 
 # Running
 After downloading the loris toolkit and adding that to the execution PATH,
-you can run the following commands to manage the networks.
+you can run the following commands to manage the networks. The toolkit 
+creates virtual networks for each pod (i.e., groups of containers that
+are allowed to reach each other). You will notice that the containers 
+will not be able to communicate across pods.
 
 * Prepare host for container networking
 ```
@@ -45,4 +48,4 @@ $ loris cleanup
 ```
 
 # Support/discussion forum
-(https://groups.google.com/forum/#!forum/lorispack)
+https://groups.google.com/forum/#!forum/lorispack

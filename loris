@@ -102,6 +102,7 @@ f_cleanup() {
     #!/bin/sh
     ovs-vsctl del-br $BR_INT
     ovs-vsctl del-br $BR_TUN
+    iptables -D INPUT -p udp --dport 4789 -j ACCEPT
     find -L /var/run/netns -type l -delete
 }
 
