@@ -97,13 +97,18 @@ f_connect_container() {
         ip netns exec $PID dhclient $CONTAINER_INTERFACE -nw
 
     else
-        # TODO: Check if address is valid
         # Add subnet mask of DEFAULT_MASK if it is missing
         if ! echo $IP_ADDR | grep -q "/"; then
             IP_ADDR="$IP_ADDR/$DEFAULT_MASK"
         fi
-        ip netns exec $PID ip addr add "${IP_ADDR}" dev $CONTAINER_INTERFACE
-        ip netns exec $PID ip route add default via `echo $IP_ADDR | awk -F '.' '{ print $1 "." $2 "." $3 "." 1 }'`
+
+        rx='([1-9]?[0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])'
+        if [[ $IP_ADDR =~ ^$rx\.$rx\.$rx\.$rx/ ]]; then
+            ip netns exec $PID ip addr add "${IP_ADDR}" dev $CONTAINER_INTERFACE
+            ip netns exec $PID ip route add default via `echo $IP_ADDR | awk -F '.' '{ print $1 "." $2 "." $3 "." 1 }'`
+        else
+            echo "IP address $IP_ADDR is invalid"
+        fi
     fi
 
     # Set VLAN tag for this container group
