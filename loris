@@ -1,5 +1,4 @@
 #!/bin/bash
-# Revision date: 10/17/2014 @ 8:15am PST
 
 # Bunch of hard coded stuff that will go away later
 CONTAINER_INTERFACE=eth1
@@ -7,6 +6,8 @@ DEFAULT_MASK=24
 TUNNEL_TYPE=vxlan
 BR_INT=br0
 BR_TUN=br1
+DEFAULT_VLAN_ID=4093
+DEFAULT_TUN_ID=$((DEFAULT_VLAN_ID+0x10000))
 
 # Function to create two bridges on the host connected to each other
 f_create_bridges_with_default_flows() {
@@ -42,7 +43,13 @@ f_create_bridges_with_default_flows() {
     ovs-ofctl -OOpenFlow13 add-flow $BR_TUN table=21,priority=0,actions=drop
 
     # Enumerated list of output actions to use for multicasting
-    ovs-ofctl -O OpenFlow13 add-flow $BR_TUN table=22,priority=0,actions=drop
+    ovs-ofctl -OOpenFlow13 add-flow $BR_TUN table=22,priority=0,actions=drop
+
+    # Rule for traffic from tunnel for default container group
+    ovs-ofctl -OOpenFlow13 add-flow $BR_TUN "table=3,priority=1,tun_id=$DEFAULT_TUN_ID actions=mod_vlan_vid:$DEFAULT_VLAN_ID,resubmit(,10)"
+
+    # Rule for multicasting traffic to tunnels
+    ovs-ofctl -OOpenFlow13 add-flow $BR_TUN "table=21,priority=1,dl_vlan=$DEFAULT_VLAN_ID,actions=strip_vlan,set_tunnel:$DEFAULT_TUN_ID,resubmit(,22)"
 }
 
 #Function to create VXLAN tunnel and the appropriate flood rules for oVS
@@ -67,35 +74,53 @@ f_create_tunnel() {
 }
 
 f_connect_container() {
-        CONTAINER=$1
-        IP_ADDR=$2
-        POD_ID=$3
+    CONTAINER=$1
+    IP_ADDR=$2
+    POD_ID=$3
+    VLAN_ID=$POD_ID
 
-    pid=`docker inspect --format '{{ .State.Pid }}' $CONTAINER`
-    ln -s /proc/$pid/ns/net /var/run/netns/$pid
-    ip link add tap$pid type veth peer name peertap$pid
-    ifconfig tap$pid up
-    ifconfig peertap$pid up
-    ip link set peertap$pid netns $pid
-    ip netns exec $pid ip link set dev peertap$pid name $CONTAINER_INTERFACE
-    ip netns exec $pid ip link set $CONTAINER_INTERFACE up
+    PID=`docker inspect --format '{{ .State.Pid }}' $CONTAINER`
+    [[ $PID -eq 0 ]] && return
 
-    # Add subnet mask of DEFAULT_MASK if it is missing
-    if ! echo $IP_ADDR | grep -q "/"; then
-        IP_ADDR="$IP_ADDR/$DEFAULT_MASK"
+    # TODO: Check if the tap/veth already exists
+    # Setup VETH from container to the oVS bridge
+    ln -s /proc/$PID/ns/net /var/run/netns/$PID
+    ip link add tap$PID type veth peer name peertap$PID
+    ifconfig tap$PID up
+    ifconfig peertap$PID up
+    ip link set peertap$PID netns $PID
+    ip netns exec $PID ip link set dev peertap$PID name $CONTAINER_INTERFACE
+    ip netns exec $PID ip link set $CONTAINER_INTERFACE up
+
+    # Assign IP address to the container
+    if [ "$IP_ADDR" = "dhcp" ]; then
+        ip netns exec $PID dhclient $CONTAINER_INTERFACE -nw
+
+    else
+        # TODO: Check if address is valid
+        # Add subnet mask of DEFAULT_MASK if it is missing
+        if ! echo $IP_ADDR | grep -q "/"; then
+            IP_ADDR="$IP_ADDR/$DEFAULT_MASK"
+        fi
+        ip netns exec $PID ip addr add "${IP_ADDR}" dev $CONTAINER_INTERFACE
+        ip netns exec $PID ip route add default via `echo $IP_ADDR | awk -F '.' '{ print $1 "." $2 "." $3 "." 1 }'`
     fi
-    ip netns exec $pid ip addr add "${IP_ADDR}" dev $CONTAINER_INTERFACE
-    ip netns exec $pid ip route add default via `echo $IP_ADDR | awk -F '.' '{ print $1 "." $2 "." $3 "." 1 }'`
-    ovs-vsctl add-port $BR_INT tap$pid -- set port tap$pid tag=$POD_ID
 
-    VLAN_ID=$3
+    # Set VLAN tag for this container group
+    [[ $VLAN_ID -eq 0 ]] && VLAN_ID=$DEFAULT_VLAN_ID
     TUN_ID=$((VLAN_ID+0x10000))
 
-    # Rule for traffic from tunnel for each container group
-    ovs-ofctl -OOpenFlow13 add-flow $BR_TUN "table=3,priority=1,tun_id=$TUN_ID actions=mod_vlan_vid:$VLAN_ID,resubmit(,10)"
+    # TODO: Check if the port already exists
+    # TODO: Cleanup any orphan ports in ovs-vsctl, but not in ovs-ofctl
+    ovs-vsctl add-port $BR_INT tap$PID -- set port tap$PID tag=$VLAN_ID
 
-    # Rule for multicasting traffic to tunnels
-    ovs-ofctl -OOpenFlow13 add-flow $BR_TUN "table=21,priority=1,dl_vlan=$VLAN_ID,actions=strip_vlan,set_tunnel:$TUN_ID,resubmit(,22)"
+    if [[ $VLAN -ne $DEFAULT_VLAN_ID ]]; then
+        # Rule for traffic from tunnel for each container group
+        ovs-ofctl -OOpenFlow13 add-flow $BR_TUN "table=3,priority=1,tun_id=$TUN_ID actions=mod_vlan_vid:$VLAN_ID,resubmit(,10)"
+
+        # Rule for multicasting traffic to tunnels
+        ovs-ofctl -OOpenFlow13 add-flow $BR_TUN "table=21,priority=1,dl_vlan=$VLAN_ID,actions=strip_vlan,set_tunnel:$TUN_ID,resubmit(,22)"
+    fi
 }
 
 f_cleanup() {
@@ -136,7 +161,7 @@ echo "Usage: $0 (init|cluster|connect|cleanup)"
 echo "Commands:"
 echo " $0 init                                       : Prepare system for network isolation"
 echo " $0 cluster \$remote_host_ips                   : Connect localhost to specified remote hosts"
-echo " $0 connect \$container \$desired_ip \$pod_number : Connect container to global pod"
+echo " $0 connect \$container (\$desired_ip|dhcp) \$pod_number : Connect container to global pod"
 echo " $0 cleanup                                    : Cleanup of system"
 ;;
 esac

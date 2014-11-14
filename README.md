@@ -31,16 +31,23 @@ This command could simply be added to the /etc/rc.local of your host
 ```
 $ loris cluster <list of remote_host_ips>
 ```
-This command needs to be run on every hosts today. But, soon
-we update code to allow entering this one a single host.
+This command needs to be run on every hosts today. But, we will soon
+update the script to allow executing this globally from a single host.
 
 * Connect container to global pod
 ```
-$ loris connect <container id/name> <desired_ip/mask> <pod_number>
+$ loris connect <container id/name> <desired_ip/mask> <optional:pod_number>
 ```
 This creates a new interface eth1 for the container. This is private
-for cross-contain communication and cannot be used to access external
-networks.
+network for cross-container communication and cannot be used to access
+external networks. Container MAC address within a pod needs to be unique.
+
+Instead of specifying the IP, it is possible to say "dhcp"
+and have the system pick IP for that interface from DHCP.
+
+If pod number is not specified, the system assigns the container
+interface to a global pod. The MAC address needs to be unique within
+this global pod for reachability.
 
 * Optionally, you can cleanup host configs after container networking
 ```
