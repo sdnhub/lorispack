@@ -8,7 +8,9 @@ how to network containers across multiple hosts.
 
 We found the need to have a comprehensive mechanism to network all
 applications across hosts with isolation through overlay networking.
-The loris software is an early attempt at providing this framework.
+The loris software is an early attempt at providing this framework,
+without using Spanning Tree Protocol (STP) that can have potential
+instability when container network ports flap.
 
 The *loris* software package allows configuring the networking of individual
 containers and isolating the network of container groups (i.e., pods).

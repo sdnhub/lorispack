@@ -12,14 +12,16 @@ DEFAULT_TUN_ID=$((DEFAULT_VLAN_ID+0x10000))
 # Function to create two bridges on the host connected to each other
 f_create_bridges_with_default_flows() {
     iptables -I INPUT -p udp --dport 4789 -j ACCEPT
-    ovs-vsctl add-br $BR_INT
-    ovs-vsctl add-br $BR_TUN
+    find -L /var/run/netns -type l -delete
+
+    ovs-vsctl --may-exist add-br $BR_INT
+    ovs-vsctl --may-exist add-br $BR_TUN
     ovs-vsctl set-manager pssl:6640
     ovs-vsctl set-controller $BR_TUN pssl:6634
     ovs-vsctl set bridge $BR_TUN protocols=OpenFlow13
-    ovs-vsctl add-port $BR_INT patch-tun -- set interface patch-tun type=patch options:peer=patch-int
+    ovs-vsctl --may-exist add-port $BR_INT patch-tun -- set interface patch-tun type=patch options:peer=patch-int
     ovs-vsctl set port patch-tun vlan_mode=trunk
-    ovs-vsctl add-port $BR_TUN patch-int -- set interface patch-int type=patch options:peer=patch-tun
+    ovs-vsctl --may-existadd-port $BR_TUN patch-int -- set interface patch-int type=patch options:peer=patch-tun
     ovs-vsctl set port patch-int vlan_mode=trunk
 
     PATCH_INT_PORT=`ovs-ofctl -OOpenFlow13 dump-ports-desc $BR_TUN | grep patch-int | awk -F '(' '{ print $1 }'`
@@ -42,14 +44,25 @@ f_create_bridges_with_default_flows() {
     ovs-ofctl -OOpenFlow13 add-flow $BR_TUN table=3,priority=0,actions=drop
     ovs-ofctl -OOpenFlow13 add-flow $BR_TUN table=21,priority=0,actions=drop
 
-    # Enumerated list of output actions to use for multicasting
-    ovs-ofctl -OOpenFlow13 add-flow $BR_TUN table=22,priority=0,actions=drop
-
     # Rule for traffic from tunnel for default container group
     ovs-ofctl -OOpenFlow13 add-flow $BR_TUN "table=3,priority=1,tun_id=$DEFAULT_TUN_ID actions=mod_vlan_vid:$DEFAULT_VLAN_ID,resubmit(,10)"
 
     # Rule for multicasting traffic to tunnels
     ovs-ofctl -OOpenFlow13 add-flow $BR_TUN "table=21,priority=1,dl_vlan=$DEFAULT_VLAN_ID,actions=strip_vlan,set_tunnel:$DEFAULT_TUN_ID,resubmit(,22)"
+
+    # Recreate multicast group
+    GROUP_ACTIONS=""
+    for EACH_TUN_PORT in `ovs-ofctl -OOpenFlow13 dump-ports-desc $BR_TUN | grep -P "$TUNNEL_TYPE.*addr" | awk -F '(' '{ print $1 }'`
+    do
+        GROUP_ACTIONS="${GROUP_ACTIONS}output:$EACH_TUN_PORT,"
+    done
+    if [ $GROUP_ACTIONS ]; then
+        ovs-ofctl -OOpenFlow13 add-flow $BR_TUN table=22,priority=1,actions=$GROUP_ACTIONS
+    fi
+
+    # Default drop for traffic when there are no tunnels
+    ovs-ofctl -OOpenFlow13 add-flow $BR_TUN table=22,priority=0,actions=drop
+
 }
 
 #Function to create VXLAN tunnel and the appropriate flood rules for oVS
@@ -68,9 +81,11 @@ f_create_tunnel() {
     GROUP_ACTIONS=""
     for EACH_TUN_PORT in `ovs-ofctl -OOpenFlow13 dump-ports-desc $BR_TUN | grep -P "$TUNNEL_TYPE.*addr" | awk -F '(' '{ print $1 }'`
     do
-    GROUP_ACTIONS="${GROUP_ACTIONS}output:$EACH_TUN_PORT,"
+        GROUP_ACTIONS="${GROUP_ACTIONS}output:$EACH_TUN_PORT,"
     done
-    ovs-ofctl -O OpenFlow13 add-flow $BR_TUN table=22,priority=1,actions=$GROUP_ACTIONS
+    if [ $GROUP_ACTIONS ]; then
+        ovs-ofctl -OOpenFlow13 add-flow $BR_TUN table=22,priority=1,actions=$GROUP_ACTIONS
+    fi
 }
 
 f_connect_container() {
@@ -142,7 +157,7 @@ f_cleanup() {
 case "$1" in
 
 'init')
-    echo "Initializing system for network isolation"
+    echo "Initializing system for pod networking"
     f_create_bridges_with_default_flows
 ;;
 
@@ -157,7 +172,7 @@ case "$1" in
 
 'cleanup')
     echo "Cleaning up system"
-    f_cleanup 
+    f_cleanup
 ;;
 
 '')
