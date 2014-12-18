@@ -21,7 +21,7 @@ f_create_bridges_with_default_flows() {
     ovs-vsctl set bridge $BR_TUN protocols=OpenFlow13
     ovs-vsctl --may-exist add-port $BR_INT patch-tun -- set interface patch-tun type=patch options:peer=patch-int
     ovs-vsctl set port patch-tun vlan_mode=trunk
-    ovs-vsctl --may-existadd-port $BR_TUN patch-int -- set interface patch-int type=patch options:peer=patch-tun
+    ovs-vsctl --may-exist add-port $BR_TUN patch-int -- set interface patch-int type=patch options:peer=patch-tun
     ovs-vsctl set port patch-int vlan_mode=trunk
 
     PATCH_INT_PORT=`ovs-ofctl -OOpenFlow13 dump-ports-desc $BR_TUN | grep patch-int | awk -F '(' '{ print $1 }'`
