@@ -18,7 +18,7 @@ The toolkit uses [Open vSwitch](http://openvswitch.org) to provide
 connectivity to containers and creates GRE or VxLAN tunnels to allow containers
 on different hosts to communicate with each other.
 
-![docker-networking-2.0.png](http://lorispack.io/wp-content/uploads/2014/11/docker_vxlan_networking-596x365.png)
+![docker-networking-2.0.png](http://sdnhub.org/wp-content/uploads/2015/03/docker_vxlan_networking-596x365.png)
 
 # Running
 After downloading the loris toolkit and adding that to the execution PATH,
