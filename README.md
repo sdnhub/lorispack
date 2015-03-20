@@ -8,24 +8,28 @@ how to network containers across multiple hosts.
 
 We found the need to have a comprehensive mechanism to network all
 applications across hosts with isolation through overlay networking.
-The loris software is an early attempt at providing this framework,
+The *lorispack* software is an early attempt at providing this framework,
 without using Spanning Tree Protocol (STP) that can have potential
 instability when container network ports flap.
 
-The *loris* software package allows configuring the networking of individual
-containers and isolating the network of container groups (i.e., pods).
+The general idea of *lorispack* is to create a parallel network
+dedicated for inter-container communication across hosts, while
+leveraging the Linux bridge to provide the basic management connectivity
+for the containers over the *eth0* interface. 
 The toolkit uses [Open vSwitch](http://openvswitch.org) to provide
 connectivity to containers and creates GRE or VxLAN tunnels to allow containers
 on different hosts to communicate with each other.
+
+The secondary goal of *lorispack* is to perform *microsegmentation*,
+whereby we isolate the network of each pod (i.e., groups of
+containers that are allowed to reach each other) from each other. 
+This is also referred to as network virtualization.
 
 ![docker-networking-2.0.png](http://sdnhub.org/wp-content/uploads/2015/03/docker_vxlan_networking-596x365.png)
 
 # Running
 After downloading the loris toolkit and adding that to the execution PATH,
-you can run the following commands to manage the networks. The toolkit 
-creates virtual networks for each pod (i.e., groups of containers that
-are allowed to reach each other). You will notice that the containers 
-will not be able to communicate across pods.
+you can run the following commands to manage the networks.
 
 * Install Open vSwitch
 ```
@@ -63,10 +67,14 @@ $ loris connect <container id/name> <desired_ip/mask> <optional:pod_number>
    interface to a global pod. The MAC address needs to be unique within
    this global pod for reachability.
 
+   Once you connect the containers, you will notice that the containers
+   will not be able to communicate across pods and will be restricted to
+   communicating within their pod.
+
 * Optionally, you can cleanup host configs after container networking
 ```
 $ loris cleanup
 ```
 
 # Support/discussion forum
-https://groups.google.com/forum/#!forum/lorispack
+http://sdnhub.org/forums/forum/solution-suite/lorispack/
