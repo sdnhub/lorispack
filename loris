@@ -175,7 +175,7 @@ case "$1" in
     f_cleanup
 ;;
 
-'')
+*)
 echo "loris - isolate Docker pod networks"
 echo "Usage: $0 (init|cluster|connect|cleanup)"
 echo "Commands:"
@@ -184,5 +184,6 @@ echo " $0 cluster \$remote_host_ips                   : Connect localhost to spe
 echo " $0 connect \$container (\$desired_ip|dhcp) \$pod_number : Connect container to global pod"
 echo " $0 cleanup                                    : Cleanup of system"
 ;;
+
 esac
 
