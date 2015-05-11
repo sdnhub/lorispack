@@ -12,6 +12,7 @@ DEFAULT_TUN_ID=$((DEFAULT_VLAN_ID+0x10000))
 # Function to create two bridges on the host connected to each other
 f_create_bridges_with_default_flows() {
     iptables -I INPUT -p udp --dport 4789 -j ACCEPT
+    mkdir -p /var/run/netns
     find -L /var/run/netns -type l -delete
 
     ovs-vsctl --may-exist add-br $BR_INT
